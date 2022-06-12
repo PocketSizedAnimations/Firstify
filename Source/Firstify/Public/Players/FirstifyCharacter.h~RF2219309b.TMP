@@ -1,0 +1,456 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+#pragma once
+
+#include "CoreMinimal.h"
+
+
+#include "GameFramework/Character.h"
+#include "FirstifyCharacter.generated.h"
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnDeath, APawn*, PawnKilled, AController*, Instigator, AActor*, DamageDealer);
+
+UENUM(BlueprintType)
+enum class EHealthState : uint8
+{
+	Healthy,
+	Injured,
+	Incapacitated,
+	Dead
+};
+
+USTRUCT(BlueprintType)
+struct FBodyPartCondition
+{
+	GENERATED_BODY();
+public:
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+		float DamagePercent;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+		bool bBleeding;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+		bool bFractured;
+};
+
+USTRUCT(BlueprintType)
+struct FBodyCondition
+{
+	GENERATED_BODY()
+public:
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+		FBodyPartCondition Head;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+		FBodyPartCondition Chest;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+		FBodyPartCondition Abdomen;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+		FBodyPartCondition LeftArm;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+		FBodyPartCondition RightArm;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+		FBodyPartCondition LeftLeg;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+		FBodyPartCondition RightLeg;
+};
+
+UENUM(BlueprintType)
+enum class EBodyPart : uint8
+{
+	Head,
+	Neck,
+	Chest,
+	Back,
+	Abdomen,
+	LowerBack,
+	Groin,
+	Butt,
+	LeftArm,
+	LeftWrist,
+	LeftHand,
+	RightArm,
+	RightWrist,
+	RightHand,
+	LeftThigh,
+	LeftCalf,
+	LeftFoot,
+	RightThigh,
+	RightCalf,
+	RightFoot,
+	Unknown
+};
+
+UENUM()
+enum class ESide : uint8
+{
+	Left,
+	Right
+};
+
+UENUM(BlueprintType)
+enum class ETurnDirection : uint8
+{
+	None,
+	Left,
+	Right
+};
+
+UCLASS(abstract)
+class FIRSTIFY_API AFirstifyCharacter : public ACharacter
+{
+	GENERATED_BODY()
+public:
+		
+		/*weapons*/
+protected:
+	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly, Category = "Aiming")
+		bool bAimingDownSights;
+	
+	FTimerHandle ADSHandler;
+		
+		/*inventory*/
+protected:
+	UPROPERTY(BlueprintReadOnly,VisibleAnywhere, Category = "Inventory")
+		class UInventoryManagerComponent* InventoryManager;
+	UPROPERTY(Replicated, ReplicatedUsing = "OnRep_InHandChanged")
+		AActor* InHand;
+private:
+	//item we're currently trying to equip
+	UPROPERTY()
+		AActor* PendingInHand;
+	/*interactives*/
+protected:
+	UPROPERTY(BlueprintReadOnly, Category = "Interactives")
+		AActor* CurrentInteractive;
+	UPROPERTY(EditAnywhere, Category = "Interactives", meta = (DisplayName = "Draw Debug Info"))
+		bool bDebugInteractives;
+	UPROPERTY(EditAnywhere, Category = "Interactives")
+		float InteractiveTraceLength;
+		
+	/*health*/
+	UPROPERTY(Replicated, BlueprintReadOnly)
+		float Health;
+	//Healthy/Injured/Incapacitated/Dead
+	UPROPERTY(Replicated, BlueprintReadOnly)
+		EHealthState HealthState;
+	//Individual Body Part Conditions
+	UPROPERTY(Replicated, BlueprintReadOnly, EditAnywhere, Category = "Health")
+		FBodyCondition BodyCondition;
+	//helper reference storing last place we were hit
+	UPROPERTY()
+		EBodyPart LastHitBodyPart;
+	/*list of bone-names for iding what body part we hit*/
+	UPROPERTY(EditDefaultsOnly, Category = "Health|Body|Bones")
+		TArray<FName> HeadBones;
+	UPROPERTY(EditDefaultsOnly, Category = "Health|Body|Bones")
+		TArray<FName> NeckBones;
+	UPROPERTY(EditDefaultsOnly, Category = "Health|Body|Bones")
+		TArray<FName> TorsoBones;
+	UPROPERTY(EditDefaultsOnly, Category = "Health|Body|Bones")
+		TArray<FName> AbdomenBones;
+	UPROPERTY(EditDefaultsOnly, Category = "Health|Body|Bones")
+		TArray<FName> PelvisBones;
+	UPROPERTY(EditDefaultsOnly, Category = "Health|Body|Bones")
+		TArray<FName> LeftArmBones;
+	UPROPERTY(EditDefaultsOnly, Category = "Health|Body|Bones")
+		TArray<FName> RightArmBones;
+	UPROPERTY(EditDefaultsOnly, Category = "Health|Body|Bones")
+		TArray<FName> LeftLegBones;
+	UPROPERTY(EditDefaultsOnly, Category = "Health|Body|Bones")
+		TArray<FName> RightLegBones;
+
+	/*death*/
+	UPROPERTY(BlueprintAssignable, Category = "Health")
+		FOnDeath OnDeathEvent;
+
+
+	/*movement*/
+public:
+	UPROPERTY(BlueprintReadOnly, Category = "Movement")
+		ETurnDirection TurnDirection;
+
+	/*hud*/
+protected:
+	UPROPERTY(EditDefaultsOnly, Category = "HUD")
+		class TSubclassOf<UUserWidget> HUDClass;
+
+	/*audio*/
+protected:
+	UPROPERTY()
+		class UAudioComponent* AudioComponent;
+	UPROPERTY(EditDefaultsOnly, Category = "Sounds|Movement")
+		class USoundCue* GenericLandedSound;
+	UPROPERTY(EditDefaultsOnly, Category = "Sounds|Pain")
+		class USoundCue* GenericPainSound;
+	UPROPERTY(EditDefaultsOnly, Category = "Sounds|Pain")
+		class USoundCue* FallPainSound;
+	UPROPERTY(EditDefaultsOnly, Category = "Sounds|Pain")
+		class USoundCue* TerminalFallSound;
+
+	/*animations*/
+protected:
+	UPROPERTY(EditDefaultsOnly, Category = "Animations|Death Animations")
+		TArray<class UCharacterDeathAnimations*> DeathAnimationSets;
+	FTimerHandle DeathAnimationTimer;
+	//Socket we attach the First Person Camera to on death
+	UPROPERTY(EditAnywhere, Category = "Animations|Death Animations")
+		FName FirstPersonDeathSocketName;
+
+
+	/*camera*/
+public:
+	UPROPERTY(BlueprintReadOnly, Category = "Character")
+		bool bFreelookEnabled;
+	//how much up/down a character is currently looking
+	UPROPERTY(Replicated, ReplicatedUsing="OnRep_PitchAmount", BlueprintReadOnly, Category = "Character")
+		float PitchAmount; 
+
+	/*camera setup*/	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
+		class USceneComponent* FirstPersonScene;
+	UPROPERTY(VisibleAnywhere, Category = "Camera")
+		class USpringArmComponent* CameraSpringComponent;
+	UPROPERTY(VisibleAnywhere,Category = "Camera")
+		class UFirstifyCameraComponent* CameraComponent;
+	UPROPERTY(VisibleAnywhere, Category = "First Person")
+		class USkeletalMeshComponent* FirstPersonArms;
+
+	//===================================================================================================================
+	//=====================================================FUNCTIONS=====================================================
+	//===================================================================================================================
+public:
+	// Sets default values for this character's properties
+	AFirstifyCharacter(const FObjectInitializer& ObjectInitializer);
+
+	// Called when the game starts or when spawned
+	virtual void BeginPlay() override;
+
+	// Called to bind functionality to input
+	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+
+	//==========================================
+	//================POSSESSION================
+	//==========================================
+public:
+	virtual void PossessedBy(AController* NewController);
+
+public:	
+	// Called every frame
+	virtual void Tick(float DeltaTime) override;
+
+	//===================================
+	//==============WEAPONS==============
+	//===================================
+protected:
+	UFUNCTION(BlueprintCallable, Category = "In Hand")
+		virtual void BeginFire();
+	UFUNCTION(BlueprintCallable, Category = "In Hand")
+		virtual void EndFire();
+	UFUNCTION()
+		virtual bool CanFire();
+	UFUNCTION()
+		virtual void AimDownSights();
+	UFUNCTION()
+		virtual void AimDownSightsLERP();
+	UFUNCTION()
+		virtual void ReleaseSights();
+
+	//===================================
+	//=============INVENTORY=============
+	//===================================
+
+public:
+	UFUNCTION()
+		virtual void Equip(AActor* Item);
+	UFUNCTION()
+		virtual void OnEquippedFinished();
+	UFUNCTION()
+		virtual void UnEquip(AActor* Item);
+	UFUNCTION()
+		virtual void OnUnEquippedFinished(AActor* Item);
+	UFUNCTION()
+		virtual void OnRep_InHandChanged();
+	UFUNCTION()
+		virtual void SwitchToPrimary();
+	UFUNCTION()
+		virtual void SwitchToAlternative();
+	UFUNCTION()
+		virtual void SwitchToSecondary();
+protected:
+	UFUNCTION()
+		virtual void Reload();
+
+
+public:
+	UFUNCTION(BlueprintPure, Category = "Inventory")
+		virtual class AActor* ReturnInHand();
+	UFUNCTION(BlueprintPure, Category = "Inventory")
+		virtual bool HasWeaponInHand();
+	UFUNCTION(BlueprintPure, Category = "Inventory")
+		virtual class AWeapon* ReturnCurrentWeapon();
+	template <class T>
+	T* ReturnCurrentWeapon()
+	{
+		return Cast<T>(CurrentInHand)
+	}
+	UFUNCTION(BlueprintPure, Category = "Weapons")
+		virtual bool IsAimingDownSights();
+	UFUNCTION(exec)
+		virtual void DebugTest();
+
+	//====================================
+	//============INTERACTIVES============
+	//====================================
+protected:
+	UFUNCTION()
+		virtual void CalcInteractives();
+	UFUNCTION()
+		virtual void Use();
+	UFUNCTION(Server, Reliable, WithValidation)
+		virtual void ServerRequestUse(AActor* InteractiveObject);
+	UFUNCTION(BlueprintCallable, Category = "Interactives")
+		virtual void PickupItem(AActor* InteractiveActor);
+	UFUNCTION(BlueprintCallable, Category = "Interactives")
+		virtual void ReleaseGrabbedItem();
+	
+	//================================
+	//============MOVEMENT============
+	//================================
+public:
+	UFUNCTION(BlueprintPure, Category = "Movement")
+		UFirstifyCharacterMovement* ReturnCharacterMovement();
+
+protected:
+	UFUNCTION()
+		virtual void Pitch(float Value);
+	UFUNCTION(Server, Unreliable, WithValidation)
+		virtual void ServerUpdatePitch(float NewPitch);
+	UFUNCTION()
+		virtual void OnRep_PitchAmount();
+	UFUNCTION()
+		virtual void Rotate(float Value);
+	UFUNCTION()
+		virtual bool CanMove();
+	UFUNCTION()
+		virtual void MoveForward(float Value);
+	UFUNCTION()
+		virtual void MoveRight(float Value);
+
+	UFUNCTION()
+		virtual void OnCrouchPressed();
+	UFUNCTION()
+		virtual void OnCrouchReleased();
+
+	UFUNCTION()
+		virtual void Sprint();
+	UFUNCTION()
+		virtual void StopSprinting();
+	UFUNCTION()
+		virtual bool CanSprint();
+
+	
+	
+	virtual void Jump() override;
+	virtual void StopJumping() override;
+	virtual void Landed(const FHitResult& Hit) override;
+
+
+
+	
+	//=======================================
+	//============DAMAGE && DEATH============
+	//=======================================
+	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+	virtual float InternalTakePointDamage(float Damage, struct FPointDamageEvent const& PointDamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+
+protected:
+	UFUNCTION()
+		virtual float TakeHeadDamage(float DamageAmount, struct FPointDamageEvent const& PointDamageEvent);
+	UFUNCTION()
+		virtual float TakeNeckDamage(float DamageAmount, struct FPointDamageEvent const& PointDamageEvent);
+	UFUNCTION()
+		virtual float TakeChestDamage(float DamageAmount, struct FPointDamageEvent const& PointDamageEvent);
+	UFUNCTION()
+		virtual float TakeAbdominalDamage(float DamageAmount, struct FPointDamageEvent const& PointDamageEvent);
+	UFUNCTION()
+		virtual float TakePelvicDamage(float DamageAmount, struct FPointDamageEvent const& PointDamageEvent);
+	UFUNCTION()
+		virtual float TakeArmDamage(float DamageAmount, struct FPointDamageEvent const& PointDamageEvent, ESide Side);
+	UFUNCTION()
+		virtual float TakeLegDamage(float DamageAmount, struct FPointDamageEvent const& PointDamageEvent, ESide Side);
+
+	UFUNCTION()
+		virtual float TakeFallDamage(float DamageAmount);
+
+	UFUNCTION(BlueprintPure, Category = "Health")
+		virtual bool IsPendingDeath();
+public:
+	UFUNCTION(BlueprintPure, Category = "Health")
+		virtual bool IsDeadOrIncapacitated();
+	UFUNCTION(BlueprintPure, Category = "Health")
+		virtual bool IsDead();
+protected:
+	//kills the player and calls OnDeath events
+	UFUNCTION()
+		virtual void Die(float Damage, FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser);
+	//replicated for all players - performs any death animation and local logic needed
+	UFUNCTION(NetMulticast, Reliable)
+		virtual void MulticastOnDeath(class AController* EventInstigator, AActor* DamageCauser, TSubclassOf<class UDamageType> DamgeType, EBodyPart BodyPartHit = EBodyPart::Unknown, class UAnimSequenceBase* DeathAnimation = nullptr);
+	//notifier for when all death animations && logic has completed
+	UFUNCTION()
+		virtual void OnDeathComplete();
+public:
+	UFUNCTION()
+		virtual void Suicide(AController* EventInstigator);
+
+
+	UFUNCTION()
+		virtual class UAnimSequenceBase* ReturnDeathAnimation(float Damage = 0.0f,EBodyPart BodyPartHit = EBodyPart::Unknown, FDamageEvent const& DamageEvent = FDamageEvent(), class AController* EventInstigator = nullptr, AActor* DamageCauser = nullptr);
+	UFUNCTION()
+		virtual void Ragdoll();
+
+
+	//=================================
+	//===============HUD===============
+	//=================================
+public:
+	UFUNCTION(BlueprintPure, Category = "HUD")
+		virtual TSubclassOf<class UUserWidget> ReturnHUDClass();
+
+
+
+
+	//==================================
+	//==============CAMERA==============
+	//==================================
+protected:
+	UFUNCTION()
+		virtual void ToggleFreelook();
+	UFUNCTION()
+		virtual void EnableFreelook();
+	UFUNCTION()
+		virtual void DisableFreelook();
+
+
+	//====================================
+	//=============ANIMATIONS=============
+	//====================================
+public:
+	UFUNCTION()
+		class UAnimInstance* ReturnFirstPersonAnimTree();
+
+	//==================================
+	//==============SOUNDS==============
+	//==================================
+public:
+	UFUNCTION()
+		virtual void PlayGenericPainSound();
+	UFUNCTION()
+		virtual void PlayLandedSound();
+	UFUNCTION()
+		virtual void PlayFallPainSound();
+	UFUNCTION()
+		virtual void PlayTerminalFallSound();
+
+};
